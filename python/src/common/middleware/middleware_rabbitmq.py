@@ -10,7 +10,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         channel = connection.channel()
         channel.queue_declare(queue=queue_name, durable=True, arguments={'x-queue-type': 'quorum'})
 
-        self.host = host
+        self.connection = connection
         self.queue_name = queue_name
         self.channel = channel
 
@@ -36,6 +36,8 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
             self.channel.basic_consume(queue=self.queue_name, on_message_callback=callback, auto_ack=False)
             self.channel.start_consuming()
+        except pika.exceptions.AMQPConnectionError as e:
+            raise MessageMiddlewareDisconnectedError(e)
         except Exception as e:
             raise MessageMiddlewareMessageError(e)
         
@@ -46,9 +48,10 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
     def stop_consuming(self):
         try:
             self.channel.stop_consuming()
-        
-        except Exception as e:
+        except pika.exceptions.AMQPConnectionError as e:
             raise MessageMiddlewareDisconnectedError(e)
+        except Exception as e:
+            raise MessageMiddlewareMessageError(e)
 
     #Envía un mensaje a la cola o al tópico con el que se inicializó el exchange.
     #Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
@@ -56,6 +59,8 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
     def send(self, message):
         try:
             self.channel.basic_publish(exchange='', routing_key=self.queue_name, body=message)
+        except pika.exceptions.AMQPConnectionError as e:
+            raise MessageMiddlewareDisconnectedError(e)
         except Exception as e:
             raise MessageMiddlewareMessageError(e)
     
@@ -63,8 +68,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
     #Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareCloseError.
     def close(self):
         try:
-            pass
-        
+            self.connection.close()
         except Exception as e:
             raise MessageMiddlewareCloseError(e)
 
