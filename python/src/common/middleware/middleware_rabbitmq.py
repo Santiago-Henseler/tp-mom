@@ -14,15 +14,6 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         self.queue_name = queue_name
         self.channel = channel
 
-
-    #Comienza a escuchar a la cola e invoca a on_message_callback tras
-    #cada mensaje de datos o de control con el cuerpo del mensaje.
-    # on_message_callback tiene como parámetros:
-    # message - El valor tal y como lo recibe el método send de esta clase.
-    # ack - Función que al invocarse realiza ack al mensaje que se está consumiendo.
-    # nack - Función que al invocarse realiza nack al mensaje que se está consumiendo. 
-    #Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
-    #Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
     def start_consuming(self, on_message_callback):
         try:
             def callback(ch, method, _, body):
@@ -40,11 +31,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             raise MessageMiddlewareDisconnectedError(e)
         except Exception as e:
             raise MessageMiddlewareMessageError(e)
-        
 
-    #Si se estaba consumiendo desde la cola, se detiene la escucha. 
-    #Si no se estaba consumiendo de la cola, no tiene efecto, ni levanta
-    #Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
     def stop_consuming(self):
         try:
             self.channel.stop_consuming()
@@ -53,9 +40,6 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         except Exception as e:
             raise MessageMiddlewareMessageError(e)
 
-    #Envía un mensaje a la cola o al tópico con el que se inicializó el exchange.
-    #Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
-    #Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
     def send(self, message):
         try:
             self.channel.basic_publish(exchange='', routing_key=self.queue_name, body=message)
@@ -63,9 +47,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             raise MessageMiddlewareDisconnectedError(e)
         except Exception as e:
             raise MessageMiddlewareMessageError(e)
-    
-    #Se desconecta de la cola al que estaba conectado.
-    #Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareCloseError.
+
     def close(self):
         try:
             self.connection.close()
@@ -76,4 +58,41 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
     
     def __init__(self, host, exchange_name, routing_keys):
-        pass
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host))
+        channel = connection.channel()
+        channel.exchange_declare(exchange=exchange_name, durable=True)
+
+        self.connection = connection
+        self.exchange_name = exchange_name
+        self.routing_keys = routing_keys
+        self.channel = channel
+
+    def start_consuming(self, on_message_callback):
+        try:
+           pass
+        except pika.exceptions.AMQPConnectionError as e:
+            raise MessageMiddlewareDisconnectedError(e)
+        except Exception as e:
+            raise MessageMiddlewareMessageError(e)
+
+    def stop_consuming(self):
+        try:
+            self.channel.stop_consuming()
+        except pika.exceptions.AMQPConnectionError as e:
+            raise MessageMiddlewareDisconnectedError(e)
+        except Exception as e:
+            raise MessageMiddlewareMessageError(e)
+    
+    def send(self, message):
+        try:
+            self.channel.basic_publish(exchange=self.exchange_name, routing_key=self.routing_keys, body=message)
+        except pika.exceptions.AMQPConnectionError as e:
+            raise MessageMiddlewareDisconnectedError(e)
+        except Exception as e:
+            raise MessageMiddlewareMessageError(e)
+
+    def close(self):
+        try:
+            self.connection.close()
+        except Exception as e:
+            raise MessageMiddlewareCloseError(e)
